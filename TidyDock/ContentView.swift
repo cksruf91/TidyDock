@@ -1,21 +1,20 @@
-//
-//  ContentView.swift
-//  TidyDock
-//
-//  Created by 박찬결 on 2/2/26.
-//
-
 import SwiftUI
 
 struct ContentView: View {
+    private let service: DockerService
+
+    init(service: DockerService = DockerHTTPService()) {
+        self.service = service
+    }
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        TabView {
+            ImageListView(service: service)
+                .tabItem { Text("Images") }
+            ContainerListView(service: service)
+                .tabItem { Text("Containers") }
         }
-        .padding()
+        .frame(minWidth: 960, minHeight: 640)
     }
 }
 

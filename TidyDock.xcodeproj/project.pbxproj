@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		4E3AE08A2F3090900093A906 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 4E3AE0892F3090900093A906 /* README.md */; };
+		4E3AE08C2F3090C60093A906 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 4E3AE08B2F3090C60093A906 /* LICENSE */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		4E3AE0612F308DDD0093A906 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +32,10 @@
 		4E3AE0532F308DDB0093A906 /* TidyDock.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TidyDock.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E3AE0602F308DDD0093A906 /* TidyDockTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TidyDockTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E3AE06A2F308DDD0093A906 /* TidyDockUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TidyDockUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		4E3AE0892F3090900093A906 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		4E3AE08B2F3090C60093A906 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
+		4E3AE08D2F3094FC0093A906 /* spec.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = spec.md; sourceTree = "<group>"; };
+		4E3AE08E2F3096390093A906 /* AGENTS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = AGENTS.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -79,6 +88,10 @@
 				4E3AE0632F308DDD0093A906 /* TidyDockTests */,
 				4E3AE06D2F308DDD0093A906 /* TidyDockUITests */,
 				4E3AE0542F308DDB0093A906 /* Products */,
+				4E3AE08B2F3090C60093A906 /* LICENSE */,
+				4E3AE08D2F3094FC0093A906 /* spec.md */,
+				4E3AE08E2F3096390093A906 /* AGENTS.md */,
+				4E3AE0892F3090900093A906 /* README.md */,
 			);
 			sourceTree = "<group>";
 		};
@@ -212,6 +225,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4E3AE08C2F3090C60093A906 /* LICENSE in Resources */,
+				4E3AE08A2F3090900093A906 /* README.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -395,7 +410,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -425,7 +440,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
