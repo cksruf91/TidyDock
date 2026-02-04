@@ -8,6 +8,7 @@ struct ImageListView: View {
     @State private var selectedImageIds: Set<String> = []
     @State private var showBulkDeleteConfirm = false
     @State private var showDanglingDeleteConfirm = false
+    @State private var lastCopiedImageId: String?
     private let columns = [
         GridItem(.flexible(minimum: 0), spacing: 16)
     ]
@@ -32,6 +33,7 @@ struct ImageListView: View {
                         ImageCard(
                             image: image,
                             isSelected: selectedImageIds.contains(image.id),
+                            isCopied: lastCopiedImageId == image.id,
                             onToggleSelection: {
                                 toggleSelection(for: image.id)
                             },
@@ -42,6 +44,18 @@ struct ImageListView: View {
                         ) {
                             selectedImage = image
                             showDeleteConfirm = true
+                        } onCopy: {
+                            copyToClipboard(image.nameWithTag)
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                lastCopiedImageId = image.id
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                if lastCopiedImageId == image.id {
+                                    withAnimation(.easeIn(duration: 0.2)) {
+                                        lastCopiedImageId = nil
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -50,7 +64,7 @@ struct ImageListView: View {
             }
         }
         .padding()
-        .background(.ultraThinMaterial)
+        .tidyPanelBackground()
         .task {
             await viewModel.refresh()
         }
@@ -108,14 +122,12 @@ struct ImageListView: View {
                 showBulkDeleteConfirm = true
             }
             .disabled(selectedImageIds.isEmpty)
-            .buttonStyle(.bordered)
-            .tint(.red.opacity(2))
+            .deleteButtonStyle()
             Button("Delete Dangling") {
                 showDanglingDeleteConfirm = true
             }
             .disabled(danglingImages.isEmpty)
-            .buttonStyle(.bordered)
-            .tint(.red.opacity(2))
+            .deleteButtonStyle()
             Button("Refresh") {
                 Task { await viewModel.refresh() }
             }
@@ -156,13 +168,14 @@ struct ContainerListView: View {
     @State private var showDeleteConfirm = false
     @State private var selectedContainerIds: Set<String> = []
     @State private var showBulkDeleteConfirm = false
+    @State private var lastCopiedContainerId: String?
     private let columns = [
         GridItem(.flexible(minimum: 0), spacing: 16)
     ]
     private let cardHeight: CGFloat = 70
-    private let leftColumnWidth: CGFloat = 170
-    private let middleColumnWidth: CGFloat = 220
-    private let rightColumnWidth: CGFloat = 220
+    private let leftColumnWidth: CGFloat = 250
+    private let middleColumnWidth: CGFloat = 250
+    private let rightColumnWidth: CGFloat = 180
 
     init(service: DockerService) {
         _viewModel = StateObject(wrappedValue: ContainerListViewModel(service: service))
@@ -180,6 +193,7 @@ struct ContainerListView: View {
                         ContainerCard(
                             container: container,
                             isSelected: selectedContainerIds.contains(container.id),
+                            isCopied: lastCopiedContainerId == container.id,
                             onToggleSelection: {
                                 toggleSelection(for: container.id)
                             },
@@ -190,6 +204,18 @@ struct ContainerListView: View {
                         ) {
                             selectedContainer = container
                             showDeleteConfirm = true
+                        } onCopy: {
+                            copyToClipboard(container.imageName)
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                lastCopiedContainerId = container.id
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                if lastCopiedContainerId == container.id {
+                                    withAnimation(.easeIn(duration: 0.2)) {
+                                        lastCopiedContainerId = nil
+                                    }
+                                }
+                            }
                         } onStart: {
                             Task { await viewModel.startContainer(id: container.id) }
                         } onStop: {
@@ -202,7 +228,7 @@ struct ContainerListView: View {
             }
         }
         .padding()
-        .background(.ultraThinMaterial)
+        .tidyPanelBackground()
         .task {
             await viewModel.refresh()
         }
@@ -260,8 +286,7 @@ struct ContainerListView: View {
                 showBulkDeleteConfirm = true
             }
             .disabled(selectedContainerIds.isEmpty)
-            .buttonStyle(.bordered)
-            .tint(.red.opacity(2))
+            .deleteButtonStyle()
             Button("Refresh") {
                 Task { await viewModel.refresh() }
             }
@@ -314,12 +339,14 @@ struct ContainerListView: View {
 private struct ImageCard: View {
     let image: DockerImage
     let isSelected: Bool
+    let isCopied: Bool
     let onToggleSelection: () -> Void
     let leftColumnWidth: CGFloat
     let middleColumnWidth: CGFloat
     let rightColumnWidth: CGFloat
     let cardHeight: CGFloat
     let onDelete: () -> Void
+    let onCopy: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
@@ -333,10 +360,16 @@ private struct ImageCard: View {
                     .labelsHidden()
                     Text(image.nameWithTag)
                         .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: leftColumnWidth - 48, alignment: .leading)
+                        .background(TooltipArea(text: image.nameWithTag))
                     Button {
-                        copyToClipboard(image.nameWithTag)
+                        onCopy()
                     } label: {
-                        Image(systemName: "doc.on.doc")
+                        Image(systemName: isCopied ? "checkmark.circle.fill" : "doc.on.doc")
+                            .scaleEffect(isCopied ? 1.05 : 1.0)
+                            .opacity(isCopied ? 1.0 : 0.75)
                     }
                     .buttonStyle(.borderless)
                     .help("Copy image name")
@@ -372,11 +405,10 @@ private struct ImageCard: View {
                         .font(.caption)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(image.inUse ? Color.green.opacity(0.2) : Color.gray.opacity(0.2))
+                        .background(image.inUse ? Color.blue.opacity(0.2) : Color.gray.opacity(0.2))
                         .clipShape(Capsule())
-                    Button("Delete", role: .destructive, action: onDelete)
-                        .buttonStyle(.bordered)
-                        .tint(.red.opacity(2))
+                    Button("Delete", action: onDelete)
+                        .deleteButtonStyle()
                 }
             }
             .frame(width: rightColumnWidth, alignment: .trailing)
@@ -384,6 +416,7 @@ private struct ImageCard: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(height: cardHeight)
+        .foregroundColor(.primary)
         .cardBackground(highlight: image.inUse)
     }
 
@@ -392,12 +425,14 @@ private struct ImageCard: View {
 private struct ContainerCard: View {
     let container: DockerContainer
     let isSelected: Bool
+    let isCopied: Bool
     let onToggleSelection: () -> Void
     let leftColumnWidth: CGFloat
     let middleColumnWidth: CGFloat
     let rightColumnWidth: CGFloat
     let cardHeight: CGFloat
     let onDelete: () -> Void
+    let onCopy: () -> Void
     let onStart: () -> Void
     let onStop: () -> Void
 
@@ -414,31 +449,42 @@ private struct ContainerCard: View {
                     .labelsHidden()
                     Text(container.name)
                         .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: leftColumnWidth - 48, alignment: .leading)
+                        .background(TooltipArea(text: container.name))
                 }
                 Text(truncatedId(container.id))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
                     .textSelection(.enabled)
                     .draggable(truncatedId(container.id))
-                HStack(spacing: 6) {
-                    Text(container.imageName)
-                        .foregroundColor(.secondary)
-                    Button {
-                        copyToClipboard(container.imageName)
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Copy image name")
-                }
             }
             .frame(width: leftColumnWidth, alignment: .leading)
 
             Spacer()
 
             VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Text(truncatedImageName(container.imageName))
+                        .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: middleColumnWidth - 48, alignment: .leading)
+                        .background(TooltipArea(text: container.imageName))
+                    Button {
+                        onCopy()
+                    } label: {
+                        Image(systemName: isCopied ? "checkmark.circle.fill" : "doc.on.doc")
+                            .scaleEffect(isCopied ? 1.05 : 1.0)
+                            .opacity(isCopied ? 1.0 : 0.75)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Copy image name")
+                }
                 Text(container.command)
                     .lineLimit(1)
+                    .font(.system(size: 11, design: .monospaced))
                 HStack {
                     Text("Ports:")
                         .foregroundColor(.secondary)
@@ -469,7 +515,7 @@ private struct ContainerCard: View {
                     .font(.caption)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(isRunning ? Color.green.opacity(0.2) : Color.orange.opacity(0.2))
+                    .background(isRunning ? Color.blue.opacity(0.2) : Color.orange.opacity(0.2))
                     .clipShape(Capsule())
                 Spacer(minLength: 0)
                 HStack(spacing: 8) {
@@ -484,15 +530,15 @@ private struct ContainerCard: View {
                     }
                     .buttonStyle(.bordered)
                     .disabled(!isRunning)
-                    Button("Delete", role: .destructive, action: onDelete)
-                        .buttonStyle(.bordered)
-                        .tint(.red.opacity(2))
+                    Button("Delete", action: onDelete)
+                        .deleteButtonStyle()
                 }
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(height: cardHeight)
+        .foregroundColor(.primary)
         .cardBackground(highlight: isRunning)
     }
 }
@@ -502,19 +548,27 @@ private struct CardBackground: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
-        let baseBackground = colorScheme == .dark ? Color.white.opacity(0.10) : Color.white.opacity(0.24)
-        let highlightOverlay = colorScheme == .dark
-            ? Color.blue.opacity(0.2)
-            : Color.blue.opacity(0.4)
+        let cornerRadius: CGFloat = 16
+        let baseFill = colorScheme == .light ? TidyTheme.lightCard : TidyTheme.darkCard
+        let highlightFill = colorScheme == .light ? TidyTheme.lightHighlight : TidyTheme.darkHighlight
+        let stroke = colorScheme == .light ? TidyTheme.lightStroke : TidyTheme.darkStroke
+        let darkShadowOpacity = colorScheme == .light ? 0.15 : 0.40
+        let lightShadowOpacity = colorScheme == .light ? 0.95 : 0.12
 
         content
-            .background(.thickMaterial)
-            .background(baseBackground)
-            .background(highlight ? highlightOverlay : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(baseFill)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(highlight ? highlightFill : Color.clear)
+                    )
+                    .shadow(color: Color.black.opacity(darkShadowOpacity), radius: 10, x: 10, y: 20)
+                    .shadow(color: Color.white.opacity(lightShadowOpacity), radius: 16, x: -2, y: -2)
+            )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.15))
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(stroke)
             )
     }
 }
@@ -523,12 +577,58 @@ private extension View {
     func cardBackground(highlight: Bool) -> some View {
         modifier(CardBackground(highlight: highlight))
     }
+
+    func deleteButtonStyle() -> some View {
+        modifier(DeleteButtonStyle())
+    }
+}
+
+private struct DeleteButtonStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .buttonStyle(.plain)
+            .font(.subheadline)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.gray.opacity(0.22))
+            )
+    }
+}
+
+private struct TooltipArea: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.toolTip = text
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        nsView.toolTip = text
+    }
 }
 
 private func copyToClipboard(_ value: String) {
     let pasteboard = NSPasteboard.general
     pasteboard.clearContents()
     pasteboard.setString(value, forType: .string)
+}
+
+private func truncatedImageName(_ value: String) -> String {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed.count >= 12 else { return trimmed }
+    let isHex = trimmed.unicodeScalars.allSatisfy { scalar in
+        switch scalar {
+        case "0"..."9", "a"..."f", "A"..."F":
+            return true
+        default:
+            return false
+        }
+    }
+    return isHex ? String(trimmed.prefix(12)) : trimmed
 }
 
 private func truncatedId(_ value: String) -> String {

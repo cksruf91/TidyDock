@@ -36,9 +36,14 @@ final class DockerHTTPService: DockerService {
     func fetchImages() async throws -> [DockerImage] {
         let data = try await client.request(method: "GET", path: "/images/json")
         let items = try JSONDecoder().decode([DockerImageItem].self, from: data)
-        return items.map { item in
-            let name = (item.repoTags?.first) ?? "<none>:<none>"
-            let parts = name.split(separator: ":", maxSplits: 1).map(String.init)
+        return items.compactMap { item in
+            let repoTags = (item.repoTags ?? []).filter { $0 != "<none>:<none>" }
+            let repoDigests = (item.repoDigests ?? []).filter { $0 != "<none>@<none>" }
+            guard let name = repoTags.first ?? repoDigests.first else {
+                return nil
+            }
+            let separator = name.contains("@") ? "@" : ":"
+            let parts = name.split(separator: Character(separator), maxSplits: 1).map(String.init)
             let repository = parts.first ?? "<none>"
             let tag = parts.count > 1 ? parts[1] : "<none>"
             return DockerImage(
@@ -106,6 +111,7 @@ final class DockerHTTPService: DockerService {
 private struct DockerImageItem: Decodable {
     let id: String
     let repoTags: [String]?
+    let repoDigests: [String]?
     let created: Int
     let size: Int64
     let containers: Int?
@@ -113,6 +119,7 @@ private struct DockerImageItem: Decodable {
     enum CodingKeys: String, CodingKey {
         case id = "Id"
         case repoTags = "RepoTags"
+        case repoDigests = "RepoDigests"
         case created = "Created"
         case size = "Size"
         case containers = "Containers"

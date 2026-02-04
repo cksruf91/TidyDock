@@ -17,6 +17,7 @@ struct ContentView: View {
     private let service: DockerService
     @State private var selection: SidebarItem? = .images
     @AppStorage("tidydock.colorScheme") private var colorSchemePreference = "system"
+    @Environment(\.colorScheme) private var colorScheme
 
     init(service: DockerService = DockerHTTPService()) {
         self.service = service
@@ -24,14 +25,19 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            Color.clear
-                .background(.ultraThinMaterial)
+            TidyTheme.canvasBackground(for: colorScheme)
+                .ignoresSafeArea()
             NavigationSplitView {
                 List(SidebarItem.allCases, selection: $selection) { item in
                     Label(item.rawValue, systemImage: item.systemImage)
                         .tag(item)
                 }
                 .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+                .background(
+                    (colorScheme == .light ? TidyTheme.lightPanel : TidyTheme.darkPanel)
+                        .opacity(colorScheme == .light ? 0.7 : 1.0)
+                )
             } detail: {
                 switch selection ?? .images {
                 case .images:
