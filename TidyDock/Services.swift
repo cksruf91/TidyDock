@@ -4,6 +4,7 @@ import Network
 protocol DockerService {
     func fetchImages() async throws -> [DockerImage]
     func fetchContainers() async throws -> [DockerContainer]
+    func fetchNetworks() async throws -> [DockerNetwork]
     func deleteImage(id: String) async throws
     func deleteContainer(id: String) async throws
     func startContainer(id: String) async throws
@@ -70,6 +71,62 @@ final class DockerHTTPService: DockerService {
                 state: item.state,
                 ports: formatPorts(item.ports),
                 name: formatName(item.names)
+            )
+        }
+    }
+
+    func fetchNetworks() async throws -> [DockerNetwork] {
+        let data = try await client.request(method: "GET", path: "/networks")
+        let items = try JSONDecoder().decode([DockerNetworkItem].self, from: data)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let fallbackFormatter = ISO8601DateFormatter()
+        fallbackFormatter.formatOptions = [.withInternetDateTime]
+
+        return items.map { item in
+            let createdAt = formatter.date(from: item.created) ?? fallbackFormatter.date(from: item.created)
+            let containers = (item.containers ?? [:])
+                .map { DockerNetworkContainer(
+                    id: $0.key,
+                    name: $0.value.name ?? "-",
+                    endpointID: $0.value.endpointID ?? "-",
+                    macAddress: $0.value.macAddress ?? "-",
+                    ipv4Address: $0.value.ipv4Address ?? "-",
+                    ipv6Address: $0.value.ipv6Address ?? "-"
+                ) }
+                .sorted { $0.name < $1.name }
+            let ipamConfigs = (item.ipam.config ?? []).enumerated().map { index, config in
+                DockerNetworkIPAMConfig(
+                    id: "\(item.id)-\(index)",
+                    subnet: config.subnet,
+                    gateway: config.gateway,
+                    ipRange: config.ipRange,
+                    auxAddresses: config.auxAddresses ?? [:]
+                )
+            }
+
+            return DockerNetwork(
+                id: item.id,
+                name: item.name,
+                createdAt: createdAt,
+                createdRaw: item.created,
+                scope: item.scope,
+                driver: item.driver,
+                enableIPv4: item.enableIPv4,
+                enableIPv6: item.enableIPv6,
+                ipam: DockerNetworkIPAM(
+                    driver: item.ipam.driver,
+                    options: item.ipam.options ?? [:],
+                    config: ipamConfigs
+                ),
+                internalValue: item.internalValue,
+                attachable: item.attachable,
+                ingress: item.ingress,
+                configFrom: DockerNetworkConfigFrom(network: item.configFrom?.network ?? ""),
+                configOnly: item.configOnly,
+                containers: containers,
+                options: item.options ?? [:],
+                labels: item.labels ?? [:]
             )
         }
     }
@@ -159,6 +216,94 @@ private struct DockerContainerItem: Decodable {
         case status = "Status"
         case ports = "Ports"
         case names = "Names"
+    }
+}
+
+private struct DockerNetworkItem: Decodable {
+    struct IPAM: Decodable {
+        struct Config: Decodable {
+            let subnet: String?
+            let gateway: String?
+            let ipRange: String?
+            let auxAddresses: [String: String]?
+
+            enum CodingKeys: String, CodingKey {
+                case subnet = "Subnet"
+                case gateway = "Gateway"
+                case ipRange = "IPRange"
+                case auxAddresses = "AuxAddresses"
+            }
+        }
+
+        let driver: String
+        let options: [String: String]?
+        let config: [Config]?
+
+        enum CodingKeys: String, CodingKey {
+            case driver = "Driver"
+            case options = "Options"
+            case config = "Config"
+        }
+    }
+
+    struct ConfigFrom: Decodable {
+        let network: String
+
+        enum CodingKeys: String, CodingKey {
+            case network = "Network"
+        }
+    }
+
+    struct NetworkContainer: Decodable {
+        let name: String?
+        let endpointID: String?
+        let macAddress: String?
+        let ipv4Address: String?
+        let ipv6Address: String?
+
+        enum CodingKeys: String, CodingKey {
+            case name = "Name"
+            case endpointID = "EndpointID"
+            case macAddress = "MacAddress"
+            case ipv4Address = "IPv4Address"
+            case ipv6Address = "IPv6Address"
+        }
+    }
+
+    let name: String
+    let id: String
+    let created: String
+    let scope: String
+    let driver: String
+    let enableIPv4: Bool?
+    let enableIPv6: Bool?
+    let ipam: IPAM
+    let internalValue: Bool
+    let attachable: Bool
+    let ingress: Bool
+    let configFrom: ConfigFrom?
+    let configOnly: Bool
+    let containers: [String: NetworkContainer]?
+    let options: [String: String]?
+    let labels: [String: String]?
+
+    enum CodingKeys: String, CodingKey {
+        case name = "Name"
+        case id = "Id"
+        case created = "Created"
+        case scope = "Scope"
+        case driver = "Driver"
+        case enableIPv4 = "EnableIPv4"
+        case enableIPv6 = "EnableIPv6"
+        case ipam = "IPAM"
+        case internalValue = "Internal"
+        case attachable = "Attachable"
+        case ingress = "Ingress"
+        case configFrom = "ConfigFrom"
+        case configOnly = "ConfigOnly"
+        case containers = "Containers"
+        case options = "Options"
+        case labels = "Labels"
     }
 }
 
@@ -400,6 +545,45 @@ final class MockDockerService: DockerService {
                 state: "exited",
                 ports: "",
                 name: "cache-redis"
+            )
+        ]
+    }
+
+    func fetchNetworks() async throws -> [DockerNetwork] {
+        return [
+            DockerNetwork(
+                id: "5230cd48db94a630ae2d6ba5d821a757e52221ac150a3045687ab43aad5a6049",
+                name: "bridge",
+                createdAt: Date().addingTimeInterval(-86400 * 3),
+                createdRaw: "2026-02-02T11:21:26.862086378+09:00",
+                scope: "local",
+                driver: "bridge",
+                enableIPv4: true,
+                enableIPv6: false,
+                ipam: DockerNetworkIPAM(
+                    driver: "default",
+                    options: [:],
+                    config: [
+                        DockerNetworkIPAMConfig(
+                            id: "bridge-0",
+                            subnet: "172.17.0.0/16",
+                            gateway: "172.17.0.1",
+                            ipRange: nil,
+                            auxAddresses: [:]
+                        )
+                    ]
+                ),
+                internalValue: false,
+                attachable: false,
+                ingress: false,
+                configFrom: DockerNetworkConfigFrom(network: ""),
+                configOnly: false,
+                containers: [],
+                options: [
+                    "com.docker.network.bridge.default_bridge": "true",
+                    "com.docker.network.bridge.name": "docker0"
+                ],
+                labels: [:]
             )
         ]
     }

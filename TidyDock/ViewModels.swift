@@ -84,3 +84,47 @@ final class ContainerListViewModel: ObservableObject {
         }
     }
 }
+
+@MainActor
+final class NetworkListViewModel: ObservableObject {
+    @Published var networks: [DockerNetwork] = []
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+
+    private let service: DockerService
+
+    init(service: DockerService) {
+        self.service = service
+    }
+
+    func refresh() async {
+        isLoading = true
+        errorMessage = nil
+        do {
+            networks = sortNetworks(try await service.fetchNetworks())
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    private func sortNetworks(_ items: [DockerNetwork]) -> [DockerNetwork] {
+        items.sorted { lhs, rhs in
+            switch (lhs.createdAt, rhs.createdAt) {
+            case let (left?, right?):
+                if left != right {
+                    return left > right
+                }
+            case (nil, nil):
+                if lhs.createdRaw != rhs.createdRaw {
+                    return lhs.createdRaw > rhs.createdRaw
+                }
+            case (nil, _?):
+                return false
+            case (_?, nil):
+                return true
+            }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+    }
+}

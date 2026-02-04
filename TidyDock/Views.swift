@@ -9,6 +9,7 @@ struct ImageListView: View {
     @State private var showBulkDeleteConfirm = false
     @State private var showDanglingDeleteConfirm = false
     @State private var lastCopiedImageId: String?
+    @State private var showErrorAlert = false
     private let columns = [
         GridItem(.flexible(minimum: 0), spacing: 16)
     ]
@@ -102,11 +103,13 @@ struct ImageListView: View {
         } message: {
             Text("Remove all unused images with <none> name/tag?")
         }
-        .alert("Error", isPresented: Binding(
-            get: { viewModel.errorMessage != nil },
-            set: { _ in viewModel.errorMessage = nil }
-        )) {
-            Button("OK", role: .cancel) {}
+        .onChange(of: viewModel.errorMessage) { _, newValue in
+            showErrorAlert = newValue != nil
+        }
+        .alert("Error", isPresented: $showErrorAlert) {
+            Button("OK", role: .cancel) {
+                viewModel.errorMessage = nil
+            }
         } message: {
             Text(viewModel.errorMessage ?? "Unknown error")
         }
@@ -169,6 +172,7 @@ struct ContainerListView: View {
     @State private var selectedContainerIds: Set<String> = []
     @State private var showBulkDeleteConfirm = false
     @State private var lastCopiedContainerId: String?
+    @State private var showErrorAlert = false
     private let columns = [
         GridItem(.flexible(minimum: 0), spacing: 16)
     ]
@@ -255,11 +259,13 @@ struct ContainerListView: View {
         } message: {
             Text("Are you sure you want to delete the selected containers?")
         }
-        .alert("Error", isPresented: Binding(
-            get: { viewModel.errorMessage != nil },
-            set: { _ in viewModel.errorMessage = nil }
-        )) {
-            Button("OK", role: .cancel) {}
+        .onChange(of: viewModel.errorMessage) { _, newValue in
+            showErrorAlert = newValue != nil
+        }
+        .alert("Error", isPresented: $showErrorAlert) {
+            Button("OK", role: .cancel) {
+                viewModel.errorMessage = nil
+            }
         } message: {
             Text(viewModel.errorMessage ?? "Unknown error")
         }
@@ -332,6 +338,69 @@ struct ContainerListView: View {
         selectedContainerIds.removeAll()
         for id in ids {
             await viewModel.deleteContainer(id: id)
+        }
+    }
+}
+
+struct NetworkListView: View {
+    @StateObject private var viewModel: NetworkListViewModel
+    @State private var showErrorAlert = false
+    private let cardWidth: CGFloat = 260
+    private let gridSpacing: CGFloat = 16
+
+    init(service: DockerService) {
+        _viewModel = StateObject(wrappedValue: NetworkListViewModel(service: service))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            header(title: "Networks")
+            if viewModel.isLoading {
+                ProgressView()
+            }
+            GeometryReader { proxy in
+                let availableWidth = max(proxy.size.width, cardWidth)
+                let columnCount = max(1, Int((availableWidth + gridSpacing) / (cardWidth + gridSpacing)))
+                let columns = Array(
+                    repeating: GridItem(.fixed(cardWidth), spacing: gridSpacing),
+                    count: columnCount
+                )
+                ScrollView(.vertical) {
+                    LazyVGrid(columns: columns, spacing: gridSpacing) {
+                        ForEach(viewModel.networks) { network in
+                            NetworkCard(network: network, width: cardWidth)
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+            }
+        }
+        .padding()
+        .tidyPanelBackground()
+        .task {
+            await viewModel.refresh()
+        }
+        .onChange(of: viewModel.errorMessage) { _, newValue in
+            showErrorAlert = newValue != nil
+        }
+        .alert("Error", isPresented: $showErrorAlert) {
+            Button("OK", role: .cancel) {
+                viewModel.errorMessage = nil
+            }
+        } message: {
+            Text(viewModel.errorMessage ?? "Unknown error")
+        }
+    }
+
+    private func header(title: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.title2)
+                .bold()
+            Spacer()
+            Button("Refresh") {
+                Task { await viewModel.refresh() }
+            }
         }
     }
 }
@@ -543,6 +612,36 @@ private struct ContainerCard: View {
     }
 }
 
+private struct NetworkCard: View {
+    let network: DockerNetwork
+    let width: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(network.name)
+                .font(.headline)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .background(TooltipArea(text: network.name))
+            VStack(alignment: .leading, spacing: 6) {
+                KeyValueRow(label: "ID", value: truncatedId(network.id))
+                KeyValueRow(label: "Created", value: formattedNetworkDate(network))
+                KeyValueRow(label: "Driver", value: network.driver)
+                KeyValueRow(label: "Scope", value: network.scope)
+                KeyValueRow(label: "IPv4", value: booleanText(network.enableIPv4))
+                KeyValueRow(label: "IPv6", value: booleanText(network.enableIPv6))
+                KeyValueRow(label: "Internal", value: network.internalValue ? "true" : "false")
+                KeyValueRow(label: "Labels", value: formattedLabels(network.labels))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+        .frame(width: width, alignment: .leading)
+        .foregroundColor(.primary)
+        .cardBackground(highlight: false)
+    }
+}
+
 private struct CardBackground: ViewModifier {
     let highlight: Bool
     @Environment(\.colorScheme) private var colorScheme
@@ -636,6 +735,75 @@ private func truncatedId(_ value: String) -> String {
     return String(normalized.prefix(12))
 }
 
+private func formattedNetworkDate(_ network: DockerNetwork) -> String {
+    if let createdAt = network.createdAt {
+        return createdAt.formatted(date: .numeric, time: .shortened)
+    }
+    return network.createdRaw
+}
+
+private func booleanText(_ value: Bool?) -> String {
+    guard let value else { return "-" }
+    return value ? "true" : "false"
+}
+
+private func formattedLabels(_ labels: [String: String]) -> String {
+    guard !labels.isEmpty else { return "-" }
+    return labels
+        .keys
+        .sorted()
+        .map { key in
+            if let value = labels[key], !value.isEmpty {
+                return "\(key)=\(value)"
+            }
+            return key
+        }
+        .joined(separator: ", ")
+}
+
+private struct KeyValueRow: View {
+    let label: String
+    let value: String
+    private let valueWidth: CGFloat = 130
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("\(label):")
+                .foregroundColor(.secondary)
+                .frame(width: 120, alignment: .leading)
+            Text(value)
+                .textSelection(.enabled)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .background(TooltipArea(text: value))
+                .frame(width: valueWidth, alignment: .leading)
+        }
+        .font(.subheadline)
+    }
+}
+
+private struct KeyValueList: View {
+    let title: String
+    let items: [String: String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            if items.isEmpty {
+                Text("-")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(items.keys.sorted(), id: \.self) { key in
+                    KeyValueRow(label: key, value: items[key] ?? "-")
+                }
+            }
+        }
+    }
+}
+
 #Preview {
     let service = MockDockerService()
     return TabView {
@@ -643,6 +811,8 @@ private func truncatedId(_ value: String) -> String {
             .tabItem { Text("Images") }
         ContainerListView(service: service)
             .tabItem { Text("Containers") }
+        NetworkListView(service: service)
+            .tabItem { Text("Networks") }
     }
     .frame(width: 980, height: 640)
 }

@@ -3,12 +3,14 @@ import SwiftUI
 private enum SidebarItem: String, CaseIterable, Hashable, Identifiable {
     case images = "Images"
     case containers = "Containers"
+    case networks = "Networks"
 
     var id: String { rawValue }
     var systemImage: String {
         switch self {
         case .images: return "square.stack.3d.up"
         case .containers: return "shippingbox"
+        case .networks: return "network"
         }
     }
 }
@@ -44,6 +46,8 @@ struct ContentView: View {
                     ImageListView(service: service)
                 case .containers:
                     ContainerListView(service: service)
+                case .networks:
+                    NetworkListView(service: service)
                 }
             }
         }
