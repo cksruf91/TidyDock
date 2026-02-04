@@ -62,6 +62,7 @@ final class DockerHTTPService: DockerService {
                 command: item.command,
                 createdAt: Date(timeIntervalSince1970: TimeInterval(item.created)),
                 status: item.status,
+                state: item.state,
                 ports: formatPorts(item.ports),
                 name: formatName(item.names)
             )
@@ -137,6 +138,7 @@ private struct DockerContainerItem: Decodable {
     let image: String
     let command: String
     let created: Int
+    let state: String
     let status: String
     let ports: [Port]
     let names: [String]
@@ -146,6 +148,7 @@ private struct DockerContainerItem: Decodable {
         case image = "Image"
         case command = "Command"
         case created = "Created"
+        case state = "State"
         case status = "Status"
         case ports = "Ports"
         case names = "Names"
@@ -377,6 +380,7 @@ final class MockDockerService: DockerService {
                 command: "nginx -g 'daemon off;'",
                 createdAt: Date().addingTimeInterval(-3600 * 12),
                 status: "running",
+                state: "running",
                 ports: "0.0.0.0:8080->80/tcp",
                 name: "web-nginx"
             ),
@@ -386,6 +390,7 @@ final class MockDockerService: DockerService {
                 command: "redis-server",
                 createdAt: Date().addingTimeInterval(-86400 * 2),
                 status: "exited",
+                state: "exited",
                 ports: "",
                 name: "cache-redis"
             )

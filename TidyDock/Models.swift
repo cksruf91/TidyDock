@@ -19,6 +19,7 @@ struct DockerContainer: Identifiable, Hashable {
     let command: String
     let createdAt: Date
     let status: String
+    let state: String
     let ports: String
     let name: String
 }

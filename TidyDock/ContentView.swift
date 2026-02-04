@@ -16,27 +16,69 @@ private enum SidebarItem: String, CaseIterable, Hashable, Identifiable {
 struct ContentView: View {
     private let service: DockerService
     @State private var selection: SidebarItem? = .images
+    @AppStorage("tidydock.colorScheme") private var colorSchemePreference = "system"
 
     init(service: DockerService = DockerHTTPService()) {
         self.service = service
     }
 
     var body: some View {
-        NavigationSplitView {
-            List(SidebarItem.allCases, selection: $selection) { item in
-                Label(item.rawValue, systemImage: item.systemImage)
-                    .tag(item)
-            }
-            .listStyle(.sidebar)
-        } detail: {
-            switch selection ?? .images {
-            case .images:
-                ImageListView(service: service)
-            case .containers:
-                ContainerListView(service: service)
+        ZStack {
+            Color.clear
+                .background(.ultraThinMaterial)
+            NavigationSplitView {
+                List(SidebarItem.allCases, selection: $selection) { item in
+                    Label(item.rawValue, systemImage: item.systemImage)
+                        .tag(item)
+                }
+                .listStyle(.sidebar)
+            } detail: {
+                switch selection ?? .images {
+                case .images:
+                    ImageListView(service: service)
+                case .containers:
+                    ContainerListView(service: service)
+                }
             }
         }
         .frame(minWidth: 980, minHeight: 640)
+        .preferredColorScheme(preferredScheme)
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    toggleScheme()
+                } label: {
+                    Image(systemName: colorSchemePreference == "dark" ? "sun.max.fill" : "moon.fill")
+                }
+                .help("Toggle Light/Dark")
+
+                Button {
+                    colorSchemePreference = "system"
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .help("Use System Appearance")
+            }
+        }
+    }
+
+    private var preferredScheme: ColorScheme? {
+        switch colorSchemePreference {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
+    }
+
+    private func toggleScheme() {
+        switch colorSchemePreference {
+        case "light":
+            colorSchemePreference = "dark"
+        case "dark":
+            colorSchemePreference = "light"
+        default:
+            colorSchemePreference = "dark"
+        }
     }
 }
 
