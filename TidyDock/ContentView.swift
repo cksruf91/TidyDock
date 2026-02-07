@@ -1,6 +1,7 @@
 import SwiftUI
 
 private enum SidebarItem: String, CaseIterable, Hashable, Identifiable {
+    case dashboard = "Dashboard"
     case images = "Images"
     case containers = "Containers"
     case networks = "Networks"
@@ -9,6 +10,7 @@ private enum SidebarItem: String, CaseIterable, Hashable, Identifiable {
     var id: String { rawValue }
     var systemImage: String {
         switch self {
+        case .dashboard: return "square.grid.2x2"
         case .images: return "square.stack.3d.up"
         case .containers: return "shippingbox"
         case .networks: return "network"
@@ -19,7 +21,7 @@ private enum SidebarItem: String, CaseIterable, Hashable, Identifiable {
 
 struct ContentView: View {
     private let service: DockerService
-    @State private var selection: SidebarItem? = .images
+    @State private var selection: SidebarItem? = .dashboard
     @AppStorage("tidydock.colorScheme") private var colorSchemePreference = "system"
     @Environment(\.colorScheme) private var colorScheme
 
@@ -43,7 +45,9 @@ struct ContentView: View {
                         .opacity(colorScheme == .light ? 0.7 : 1.0)
                 )
             } detail: {
-                switch selection ?? .images {
+                switch selection ?? .dashboard {
+                case .dashboard:
+                    DashboardView(service: service)
                 case .images:
                     ImageListView(service: service)
                 case .containers:
