@@ -128,3 +128,27 @@ final class NetworkListViewModel: ObservableObject {
         }
     }
 }
+
+@MainActor
+final class SystemDiskUsageViewModel: ObservableObject {
+    @Published var usage: DockerSystemDiskUsage?
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+
+    private let service: DockerService
+
+    init(service: DockerService) {
+        self.service = service
+    }
+
+    func refresh() async {
+        isLoading = true
+        errorMessage = nil
+        do {
+            usage = try await service.fetchSystemDiskUsage()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+}

@@ -70,3 +70,61 @@ struct DockerNetworkContainer: Identifiable {
     let ipv4Address: String
     let ipv6Address: String
 }
+
+struct DockerSystemDiskUsage {
+    let layersSize: Int64
+    let images: [DockerSystemImage]
+    let containers: [DockerSystemContainer]
+    let volumes: [DockerSystemVolume]
+    let buildCache: [DockerSystemBuildCache]
+    let imageSummary: DockerSystemUsageSummary
+    let containerSummary: DockerSystemUsageSummary
+    let volumeSummary: DockerSystemUsageSummary
+    let buildCacheSummary: DockerSystemUsageSummary
+}
+
+struct DockerSystemUsageSummary: Hashable {
+    let totalSizeBytes: Int64
+    let totalCount: Int
+    let activeCount: Int
+    let reclaimableBytes: Int64
+}
+
+struct DockerSystemImage: Identifiable, Hashable {
+    let id: String
+    let repoTags: [String]
+    let repoDigests: [String]
+    let sizeBytes: Int64
+    let sharedSizeBytes: Int64
+    let containers: Int
+}
+
+struct DockerSystemContainer: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let image: String
+    let state: String
+    let status: String
+    let sizeRwBytes: Int64
+    let sizeRootFsBytes: Int64
+}
+
+struct DockerSystemVolume: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let driver: String
+    let mountpoint: String
+    let scope: String
+    let sizeBytes: Int64
+    let refCount: Int
+}
+
+struct DockerSystemBuildCache: Identifiable, Hashable {
+    let id: String
+    let cacheType: String
+    let description: String
+    let inUse: Bool
+    let shared: Bool
+    let sizeBytes: Int64
+    let usageCount: Int
+}

@@ -4,6 +4,7 @@ private enum SidebarItem: String, CaseIterable, Hashable, Identifiable {
     case images = "Images"
     case containers = "Containers"
     case networks = "Networks"
+    case diskUsage = "Disk Usage"
 
     var id: String { rawValue }
     var systemImage: String {
@@ -11,6 +12,7 @@ private enum SidebarItem: String, CaseIterable, Hashable, Identifiable {
         case .images: return "square.stack.3d.up"
         case .containers: return "shippingbox"
         case .networks: return "network"
+        case .diskUsage: return "externaldrive.fill"
         }
     }
 }
@@ -48,6 +50,8 @@ struct ContentView: View {
                     ContainerListView(service: service)
                 case .networks:
                     NetworkListView(service: service)
+                case .diskUsage:
+                    SystemDiskUsageView(service: service)
                 }
             }
         }

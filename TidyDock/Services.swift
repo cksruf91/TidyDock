@@ -5,6 +5,7 @@ protocol DockerService {
     func fetchImages() async throws -> [DockerImage]
     func fetchContainers() async throws -> [DockerContainer]
     func fetchNetworks() async throws -> [DockerNetwork]
+    func fetchSystemDiskUsage() async throws -> DockerSystemDiskUsage
     func deleteImage(id: String) async throws
     func deleteContainer(id: String) async throws
     func startContainer(id: String) async throws
@@ -129,6 +130,117 @@ final class DockerHTTPService: DockerService {
                 labels: item.labels ?? [:]
             )
         }
+    }
+
+    func fetchSystemDiskUsage() async throws -> DockerSystemDiskUsage {
+        let data = try await client.request(method: "GET", path: "/system/df")
+        let payload = try JSONDecoder().decode(DockerSystemDiskUsagePayload.self, from: data)
+        let images = payload.images.map { item in
+            DockerSystemImage(
+                id: item.id,
+                repoTags: (item.repoTags ?? []).filter { $0 != "<none>:<none>" },
+                repoDigests: (item.repoDigests ?? []).filter { $0 != "<none>@<none>" },
+                sizeBytes: item.size,
+                sharedSizeBytes: item.sharedSize ?? 0,
+                containers: item.containers ?? 0
+            )
+        }
+        let containerItems = payload.containerUsage?.items ?? payload.containers ?? []
+        let containers = containerItems.map { item in
+            DockerSystemContainer(
+                id: item.id,
+                name: formatName(item.names),
+                image: item.image,
+                state: item.state,
+                status: item.status,
+                sizeRwBytes: item.sizeRw ?? 0,
+                sizeRootFsBytes: item.sizeRootFs ?? 0
+            )
+        }
+        let volumeItems = payload.volumeUsage?.items ?? payload.volumes ?? []
+        let volumes = volumeItems.map { item in
+            DockerSystemVolume(
+                id: item.name,
+                name: item.name,
+                driver: item.driver,
+                mountpoint: item.mountpoint,
+                scope: item.scope,
+                sizeBytes: item.usageData?.size ?? 0,
+                refCount: item.usageData?.refCount ?? 0
+            )
+        }
+        let buildCacheItems = payload.buildCacheUsage?.items ?? payload.buildCache ?? []
+        let buildCache = buildCacheItems.map { item in
+            DockerSystemBuildCache(
+                id: item.id,
+                cacheType: item.cacheType ?? "-",
+                description: item.description ?? "-",
+                inUse: item.inUse ?? false,
+                shared: item.shared ?? false,
+                sizeBytes: item.size ?? 0,
+                usageCount: item.usageCount ?? 0
+            )
+        }
+        let imageActive = images.filter { $0.containers > 0 }.count
+        let imageTotalCount = payload.totalCount ?? images.count
+        let imageEffectiveTotalSize = images.reduce(0) { total, image in
+            total + max(0, image.sizeBytes - image.sharedSizeBytes)
+        }
+        let imageTotalSize = imageEffectiveTotalSize
+        let computedImageReclaimable = images.filter { $0.containers == 0 }.reduce(0) { $0 + $1.sizeBytes }
+        let imageReclaimable = max(0, payload.reclaimable ?? computedImageReclaimable)
+
+        let containerActive = payload.containerUsage?.activeCount
+            ?? containers.filter { $0.state == "running" }.count
+        let containerTotalCount = payload.containerUsage?.totalCount ?? containers.count
+        let containerTotalSize = payload.containerUsage?.totalSize ?? containers.reduce(0) { $0 + $1.sizeRootFsBytes }
+        let computedContainerReclaimable = containers.filter { $0.state != "running" }.reduce(0) { $0 + $1.sizeRwBytes }
+        let containerReclaimable = max(0, payload.containerUsage?.reclaimable ?? computedContainerReclaimable)
+
+        let volumeActive = payload.volumeUsage?.activeCount
+            ?? volumes.filter { $0.refCount > 0 }.count
+        let volumeTotalCount = payload.volumeUsage?.totalCount ?? volumes.count
+        let volumeTotalSize = payload.volumeUsage?.totalSize ?? volumes.reduce(0) { $0 + $1.sizeBytes }
+        let volumeReclaimable = volumes.filter { $0.refCount == 0 }.reduce(0) { $0 + $1.sizeBytes }
+
+        let buildCacheActive = payload.buildCacheUsage?.activeCount
+            ?? buildCache.filter { $0.inUse }.count
+        let buildCacheTotalCount = payload.buildCacheUsage?.totalCount ?? buildCache.count
+        let buildCacheTotalSize = payload.buildCacheUsage?.totalSize ?? buildCache.reduce(0) { $0 + $1.sizeBytes }
+        let computedBuildCacheReclaimable = buildCache.filter { !$0.inUse }.reduce(0) { $0 + $1.sizeBytes }
+        let buildCacheReclaimable = max(0, payload.buildCacheUsage?.reclaimable ?? computedBuildCacheReclaimable)
+
+        return DockerSystemDiskUsage(
+            layersSize: payload.layersSize ?? 0,
+            images: images,
+            containers: containers,
+            volumes: volumes,
+            buildCache: buildCache,
+            imageSummary: DockerSystemUsageSummary(
+                totalSizeBytes: imageTotalSize,
+                totalCount: imageTotalCount,
+                activeCount: imageActive,
+                reclaimableBytes: imageReclaimable
+            ),
+            containerSummary: DockerSystemUsageSummary(
+                totalSizeBytes: containerTotalSize,
+                totalCount: containerTotalCount,
+                activeCount: containerActive,
+                reclaimableBytes: containerReclaimable
+            ),
+            volumeSummary: DockerSystemUsageSummary(
+                totalSizeBytes: volumeTotalSize,
+                totalCount: volumeTotalCount,
+                activeCount: volumeActive,
+                reclaimableBytes: volumeReclaimable
+            ),
+            buildCacheSummary: DockerSystemUsageSummary(
+                totalSizeBytes: buildCacheTotalSize,
+                totalCount: buildCacheTotalCount,
+                activeCount: buildCacheActive,
+                reclaimableBytes: buildCacheReclaimable
+            )
+        )
     }
 
     func deleteImage(id: String) async throws {
@@ -304,6 +416,164 @@ private struct DockerNetworkItem: Decodable {
         case containers = "Containers"
         case options = "Options"
         case labels = "Labels"
+    }
+}
+
+private struct DockerSystemDiskUsagePayload: Decodable {
+    let layersSize: Int64?
+    let images: [DockerSystemImageItem]
+    let reclaimable: Int64?
+    let totalCount: Int?
+    let totalSize: Int64?
+    let containerUsage: DockerSystemContainerUsage?
+    let volumeUsage: DockerSystemVolumeUsage?
+    let buildCacheUsage: DockerSystemBuildCacheUsage?
+    let containers: [DockerSystemContainerItem]?
+    let volumes: [DockerSystemVolumeItem]?
+    let buildCache: [DockerSystemBuildCacheItem]?
+
+    enum CodingKeys: String, CodingKey {
+        case layersSize = "LayersSize"
+        case images = "Images"
+        case reclaimable = "Reclaimable"
+        case totalCount = "TotalCount"
+        case totalSize = "TotalSize"
+        case containerUsage = "ContainerUsage"
+        case volumeUsage = "VolumeUsage"
+        case buildCacheUsage = "BuildCacheUsage"
+        case containers = "Containers"
+        case volumes = "Volumes"
+        case buildCache = "BuildCache"
+    }
+}
+
+private struct DockerSystemContainerUsage: Decodable {
+    let activeCount: Int?
+    let items: [DockerSystemContainerItem]
+    let reclaimable: Int64?
+    let totalCount: Int?
+    let totalSize: Int64?
+
+    enum CodingKeys: String, CodingKey {
+        case activeCount = "ActiveCount"
+        case items = "Items"
+        case reclaimable = "Reclaimable"
+        case totalCount = "TotalCount"
+        case totalSize = "TotalSize"
+    }
+}
+
+private struct DockerSystemVolumeUsage: Decodable {
+    let activeCount: Int?
+    let items: [DockerSystemVolumeItem]
+    let totalCount: Int?
+    let totalSize: Int64?
+
+    enum CodingKeys: String, CodingKey {
+        case activeCount = "ActiveCount"
+        case items = "Items"
+        case totalCount = "TotalCount"
+        case totalSize = "TotalSize"
+    }
+}
+
+private struct DockerSystemBuildCacheUsage: Decodable {
+    let activeCount: Int?
+    let items: [DockerSystemBuildCacheItem]?
+    let reclaimable: Int64?
+    let totalCount: Int?
+    let totalSize: Int64?
+
+    enum CodingKeys: String, CodingKey {
+        case activeCount = "ActiveCount"
+        case items = "Items"
+        case reclaimable = "Reclaimable"
+        case totalCount = "TotalCount"
+        case totalSize = "TotalSize"
+    }
+}
+
+private struct DockerSystemImageItem: Decodable {
+    let id: String
+    let repoTags: [String]?
+    let repoDigests: [String]?
+    let size: Int64
+    let sharedSize: Int64?
+    let containers: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id = "Id"
+        case repoTags = "RepoTags"
+        case repoDigests = "RepoDigests"
+        case size = "Size"
+        case sharedSize = "SharedSize"
+        case containers = "Containers"
+    }
+}
+
+private struct DockerSystemContainerItem: Decodable {
+    let id: String
+    let names: [String]
+    let image: String
+    let state: String
+    let status: String
+    let sizeRw: Int64?
+    let sizeRootFs: Int64?
+
+    enum CodingKeys: String, CodingKey {
+        case id = "Id"
+        case names = "Names"
+        case image = "Image"
+        case state = "State"
+        case status = "Status"
+        case sizeRw = "SizeRw"
+        case sizeRootFs = "SizeRootFs"
+    }
+}
+
+private struct DockerSystemVolumeItem: Decodable {
+    struct UsageData: Decodable {
+        let size: Int64
+        let refCount: Int
+
+        enum CodingKeys: String, CodingKey {
+            case size = "Size"
+            case refCount = "RefCount"
+        }
+    }
+
+    let name: String
+    let driver: String
+    let mountpoint: String
+    let scope: String
+    let usageData: UsageData?
+
+    enum CodingKeys: String, CodingKey {
+        case name = "Name"
+        case driver = "Driver"
+        case mountpoint = "Mountpoint"
+        case scope = "Scope"
+        case usageData = "UsageData"
+    }
+}
+
+private struct DockerSystemBuildCacheItem: Decodable {
+    let id: String
+    let cacheType: String?
+    let description: String?
+    let inUse: Bool?
+    let shared: Bool?
+    let size: Int64?
+    let usageCount: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id = "ID"
+        case cacheType = "Type"
+        case description = "Description"
+        case inUse = "InUse"
+        case shared = "Shared"
+        case size = "Size"
+        case usageCount = "UsageCount"
     }
 }
 
@@ -586,6 +856,69 @@ final class MockDockerService: DockerService {
                 labels: [:]
             )
         ]
+    }
+
+    func fetchSystemDiskUsage() async throws -> DockerSystemDiskUsage {
+        return DockerSystemDiskUsage(
+            layersSize: 14_187_398_591,
+            images: [
+                DockerSystemImage(
+                    id: "sha256:90ca6ec9",
+                    repoTags: ["search-mcp-api:latest"],
+                    repoDigests: ["search-mcp-api@sha256:90ca6ec9"],
+                    sizeBytes: 1_496_591_521,
+                    sharedSizeBytes: 159_019_008,
+                    containers: 1
+                )
+            ],
+            containers: [
+                DockerSystemContainer(
+                    id: "97df5cbcc2b7",
+                    name: "dockerfiles-api-1",
+                    image: "search-mcp-api:latest",
+                    state: "running",
+                    status: "Up 3 hours",
+                    sizeRwBytes: 24_576,
+                    sizeRootFsBytes: 1_183_920_128
+                )
+            ],
+            volumes: [
+                DockerSystemVolume(
+                    id: "6181804ca8f6",
+                    name: "6181804ca8f6",
+                    driver: "local",
+                    mountpoint: "/var/lib/docker/volumes/6181804ca8f6/_data",
+                    scope: "local",
+                    sizeBytes: 171_641_286,
+                    refCount: 1
+                )
+            ],
+            buildCache: [],
+            imageSummary: DockerSystemUsageSummary(
+                totalSizeBytes: 14_187_398_591,
+                totalCount: 51,
+                activeCount: 3,
+                reclaimableBytes: 12_260_000_000
+            ),
+            containerSummary: DockerSystemUsageSummary(
+                totalSizeBytes: 49_152,
+                totalCount: 3,
+                activeCount: 2,
+                reclaimableBytes: 4_096
+            ),
+            volumeSummary: DockerSystemUsageSummary(
+                totalSizeBytes: 171_641_286,
+                totalCount: 1,
+                activeCount: 1,
+                reclaimableBytes: 0
+            ),
+            buildCacheSummary: DockerSystemUsageSummary(
+                totalSizeBytes: 0,
+                totalCount: 0,
+                activeCount: 0,
+                reclaimableBytes: 0
+            )
+        )
     }
 
     func deleteImage(id: String) async throws {}
